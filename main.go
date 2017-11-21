@@ -24,6 +24,7 @@ import (
 // readHandler is called when client starts file download from server
 func readHandler(filename string, rf io.ReaderFrom) error {
 	execDir, _ := os.Executable()
+	execDir = filepath.Dir(execDir)
 	file, err := os.Open(filepath.Join(execDir, "tftp", filename))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
@@ -38,7 +39,7 @@ func readHandler(filename string, rf io.ReaderFrom) error {
 	return nil
 }
 
-func externalIP() (string, error) {
+func externalIP(notThis string) (string, error) {
 	ifaces, err := net.Interfaces()
 	if err != nil {
 		return "", err
@@ -66,7 +67,7 @@ func externalIP() (string, error) {
 				continue
 			}
 			ip = ip.To4()
-			if ip == nil {
+			if ip == nil || ip.String() == notThis {
 				continue // not an ipv4 address
 			}
 			return ip.String(), nil
@@ -79,29 +80,31 @@ func serveTFTP() {
 	// only read capabilities
 	s := tftp.NewServer(readHandler, nil)
 	s.SetTimeout(5 * time.Second) // optional
-	go s.ListenAndServe(":69")    // blocks until s.Shutdown() is called
+	go func() {
+		time.Sleep(1 * time.Second)
+		s.Shutdown()
+	}()
+	err := s.ListenAndServe(":69") // blocks until s.Shutdown() is called
+	if err != nil {
+		log.Fatal("Can't spawn tftp server, make sure you are running as administrator\n" + err.Error())
+	}
+	// respawn as goroutine
+	go s.ListenAndServe(":69")
 }
 
-func main() {
-
-	bootloaderFirmwareName := "u-boot_linino_lede.bin"
-	sysupgradeFirmwareName := "lede-ar71xx-generic-arduino-yun-squashfs-sysupgrade.bin"
-
-	flashBootloader := flag.Bool("bl", false, "Flash bootloader too (danger zone)")
-	targetBoard := flag.String("board", "Yun", "Update to target board")
-	flag.Parse()
-	// serve tftp files
-	serveTFTP()
+func getServerAndBoardIP(serverAddr, ipAddr *string) {
 	// get self ip addresses
-	serverAddr, err := externalIP()
+	var err error
+	*serverAddr, err = externalIP(*serverAddr)
 	if err != nil {
 		fmt.Println("Could not get your IP address, check your network connection")
 		os.Exit(1)
 	}
 	// remove last octect to get an available IP adress for the board
-	ip := net.ParseIP(serverAddr)
+	ip := net.ParseIP(*serverAddr)
 	ip = ip.To4()
-	ip[3] = 10
+	// strat trying from server IP + 1
+	ip[3]++
 	for ip[3] < 255 {
 		_, err := net.DialTimeout("tcp", ip.String(), 2*time.Second)
 		if err != nil {
@@ -109,7 +112,32 @@ func main() {
 		}
 		ip[3]++
 	}
-	ipAddr := ip.String()
+	*ipAddr = ip.String()
+}
+
+type context struct {
+	flashBootloader        *bool
+	serverAddr             string
+	ipAddr                 string
+	bootloaderFirmwareName string
+	sysupgradeFirmwareName string
+	targetBoard            *string
+}
+
+func main() {
+
+	bootloaderFirmwareName := "u-boot_linino_lede.bin"
+	sysupgradeFirmwareName := "lede-ar71xx-generic-arduino-yun-squashfs-sysupgrade.bin"
+
+	serverAddr := ""
+	ipAddr := ""
+
+	flashBootloader := flag.Bool("bl", false, "Flash bootloader too (danger zone)")
+	targetBoard := flag.String("board", "Yun", "Update to target board")
+	flag.Parse()
+	// serve tftp files
+	serveTFTP()
+	getServerAndBoardIP(&serverAddr, &ipAddr)
 	fmt.Println("Using " + serverAddr + " as server address and " + ipAddr + " as board address")
 
 	// get serial ports attached
@@ -135,6 +163,10 @@ func main() {
 		}
 	}
 
+	if serialPort.Name == "" {
+		log.Fatal("No serial port suitable for updating " + *targetBoard)
+	}
+
 	// upload the YunSerialTerminal to the board
 	port, err := upload(serialPort.Name)
 	if err != nil {
@@ -142,7 +174,7 @@ func main() {
 	}
 
 	// start the expecter
-	exp, _, err := serialSpawn(port, time.Duration(10)*time.Second, expect.Verbose(true))
+	exp, _, err := serialSpawn(port, time.Duration(10)*time.Second, expect.Verbose(true), expect.VerboseWriter(os.Stdout))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -153,23 +185,61 @@ func main() {
 		}
 	}()
 
-	if *flashBootloader {
+	ctx := context{flashBootloader: flashBootloader, serverAddr: serverAddr, ipAddr: ipAddr, bootloaderFirmwareName: bootloaderFirmwareName, sysupgradeFirmwareName: sysupgradeFirmwareName, targetBoard: targetBoard}
+
+	lastline, err := flash(exp, ctx)
+
+	retry_count := 0
+
+	for err != nil && retry_count < 3 /* && strings.Contains(lastline, "Loading: T ")*/ {
+		//retry with different IP addresses
+		fmt.Println(err.Error())
+		getServerAndBoardIP(&serverAddr, &ipAddr)
+		ctx.serverAddr = serverAddr
+		ctx.ipAddr = ipAddr
+		retry_count++
+		lastline, err = flash(exp, ctx)
+	}
+
+	fmt.Println(lastline)
+}
+
+func flash(exp expect.Expecter, ctx context) (string, error) {
+	res, err := exp.ExpectBatch([]expect.Batcher{
+		&expect.BSnd{S: "\n"},
+		&expect.BExp{R: "root@"},
+		&expect.BSnd{S: "reboot\n"},
+	}, time.Duration(10)*time.Second)
+
+	if err != nil {
+		fmt.Println("Reboot the board using YUN RST button")
+	} else {
+		fmt.Println("Rebooting the board")
+		time.Sleep(2 * time.Second)
+	}
+
+	if *ctx.flashBootloader {
 		// set server and board ip
-		exp.ExpectBatch([]expect.Batcher{
-			&expect.BExp{R: "autoboot in 4 seconds:"},
+		res, err = exp.ExpectBatch([]expect.Batcher{
+			&expect.BExp{R: "autoboot in"},
 			&expect.BSnd{S: "ard\n"},
 			&expect.BExp{R: "linino>"},
-			&expect.BSnd{S: "setenv serverip " + serverAddr + "\n"},
+			&expect.BSnd{S: "setenv serverip " + ctx.serverAddr + "\n"},
 			&expect.BExp{R: "linino>"},
-			&expect.BSnd{S: "setenv ipaddr " + ipAddr + "\n"},
+			&expect.BSnd{S: "printenv\n"},
+			&expect.BExp{R: "serverip=" + ctx.serverAddr},
 			&expect.BExp{R: "linino>"},
-		}, time.Duration(10)*time.Second)
+			&expect.BSnd{S: "setenv ipaddr " + ctx.ipAddr + "\n"},
+			&expect.BSnd{S: "printenv\n"},
+			&expect.BExp{R: "ipaddr=" + ctx.ipAddr},
+			&expect.BExp{R: "linino>"},
+		}, time.Duration(20)*time.Second)
 
 		// flash new bootloader
 		exp.ExpectBatch([]expect.Batcher{
 			&expect.BSnd{S: "printenv\n"},
 			&expect.BExp{R: "linino>"},
-			&expect.BSnd{S: "tftp 0x80060000 " + bootloaderFirmwareName + "\n"},
+			&expect.BSnd{S: "tftp 0x80060000 " + ctx.bootloaderFirmwareName + "\n"},
 			&expect.BExp{R: "Bytes transferred = 182492 (2c8dc hex)"},
 			&expect.BExp{R: "linino>"},
 			&expect.BSnd{S: "erase 0x9f000000 +0x40000\n"},
@@ -178,48 +248,83 @@ func main() {
 			&expect.BExp{R: "linino>"},
 			&expect.BSnd{S: "erase 0x9f040000 +0x10000\n"},
 			&expect.BExp{R: "linino>"},
-			&expect.BSnd{S: "reset"},
+			&expect.BSnd{S: "reset\n"},
 		}, time.Duration(30)*time.Second)
 
 		// set new name
 		exp.ExpectBatch([]expect.Batcher{
-			&expect.BExp{R: "autoboot in 4 seconds:"},
+			&expect.BExp{R: "autoboot in"},
 			&expect.BSnd{S: "ard\n"},
 			&expect.BExp{R: "linino>"},
 			&expect.BSnd{S: "printenv\n"},
 			&expect.BExp{R: "linino>"},
-			&expect.BSnd{S: "setenv board " + *targetBoard + "\n"},
+			&expect.BSnd{S: "setenv board " + *ctx.targetBoard + "\n"},
 			&expect.BExp{R: "linino>"},
 			&expect.BSnd{S: "saveenv\n"},
 			&expect.BExp{R: "linino>"},
-			&expect.BSnd{S: "reset"},
+			&expect.BSnd{S: "reset\n"},
 		}, time.Duration(10)*time.Second)
 	}
 
 	// set server and board ip
-	exp.ExpectBatch([]expect.Batcher{
-		&expect.BExp{R: "autoboot in 4 seconds:"},
+	res, err = exp.ExpectBatch([]expect.Batcher{
+		&expect.BExp{R: "autoboot in"},
 		&expect.BSnd{S: "ard\n"},
 		&expect.BExp{R: "linino>"},
-		&expect.BSnd{S: "setenv serverip " + serverAddr + "\n"},
+		&expect.BSnd{S: "setenv serverip " + ctx.serverAddr + "\n"},
 		&expect.BExp{R: "linino>"},
-		&expect.BSnd{S: "setenv ipaddr " + ipAddr + "\n"},
+		&expect.BSnd{S: "printenv\n"},
+		&expect.BExp{R: "serverip=" + ctx.serverAddr},
 		&expect.BExp{R: "linino>"},
-	}, time.Duration(10)*time.Second)
+		&expect.BSnd{S: "setenv ipaddr " + ctx.ipAddr + "\n"},
+		&expect.BSnd{S: "printenv\n"},
+		&expect.BExp{R: "ipaddr=" + ctx.ipAddr},
+		&expect.BExp{R: "linino>"},
+	}, time.Duration(20)*time.Second)
+
+	if err != nil {
+		return res[len(res)-1].Output, err
+	}
+
+	// ping the serverIP; if ping is not working, try another network interface
+	/*
+		res, err = exp.ExpectBatch([]expect.Batcher{
+			&expect.BSnd{S: "ping " + ctx.serverAddr + "\n"},
+			&expect.BExp{R: "is alive"},
+		}, time.Duration(6)*time.Second)
+
+		if err != nil {
+			return res[len(res)-1].Output, err
+		}
+	*/
+
+	time.Sleep(2 * time.Second)
 
 	// flash sysupgrade
-	exp.ExpectBatch([]expect.Batcher{
+	res, err = exp.ExpectBatch([]expect.Batcher{
 		&expect.BSnd{S: "printenv\n"},
+		&expect.BExp{R: "board="},
 		&expect.BExp{R: "linino>"},
-		&expect.BSnd{S: "tftp 0x80060000 " + sysupgradeFirmwareName + "\n"},
-		&expect.BExp{R: "Bytes transferred = 3538948 (360004 hex)"},
+		&expect.BSnd{S: "tftp 0x80060000 " + ctx.sysupgradeFirmwareName + "\n"},
+		&expect.BExp{R: "Bytes transferred = 3538948"},
 		&expect.BExp{R: "linino>"},
 		&expect.BSnd{S: "erase 0x9f050000 +0x400004\n"},
+		&expect.BExp{R: "Erased 65 sectors"},
+		&expect.BSnd{S: "printenv\n"},
 		&expect.BExp{R: "linino>"},
 		&expect.BSnd{S: "cp.b $fileaddr 0x9f050000 $filesize\n"},
+		&expect.BExp{R: "done"},
+		&expect.BSnd{S: "printenv\n"},
 		&expect.BExp{R: "linino>"},
-		&expect.BSnd{S: "reset"},
-	}, time.Duration(30)*time.Second)
+		&expect.BSnd{S: "reset\n"},
+		&expect.BExp{R: "Starting kernel"},
+	}, time.Duration(60)*time.Second)
+
+	if err != nil {
+		return res[len(res)-1].Output, err
+	}
+
+	return res[len(res)-1].Output, nil
 }
 
 func serialSpawn(port string, timeout time.Duration, opts ...expect.Option) (expect.Expecter, <-chan error, error) {
@@ -256,9 +361,13 @@ func upload(port string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
+	time.Sleep(1 * time.Second)
+
 	execDir, _ := os.Executable()
+	execDir = filepath.Dir(execDir)
 	binDir := filepath.Join(execDir, "avr")
-	FWName := "YunSerialTerminal.ino.hex"
+	FWName := filepath.Join(binDir, "YunSerialTerminal.ino.hex")
 	args := []string{"-C" + binDir + "/etc/avrdude.conf", "-v", "-patmega32u4", "-cavr109", "-P" + port, "-b57600", "-D", "-Uflash:w:" + FWName + ":i"}
 	err = program(filepath.Join(binDir, "bin", "avrdude"), args)
 	if err != nil {
