@@ -126,7 +126,7 @@ type context struct {
 
 func main() {
 
-	bootloaderFirmwareName := "u-boot_linino_lede.bin"
+	bootloaderFirmwareName := "u-boot-linino-lede.bin"
 	sysupgradeFirmwareName := "lede-ar71xx-generic-arduino-yun-squashfs-sysupgrade.bin"
 
 	serverAddr := ""
@@ -235,12 +235,15 @@ func flash(exp expect.Expecter, ctx context) (string, error) {
 			&expect.BExp{R: "linino>"},
 		}, time.Duration(20)*time.Second)
 
+		time.Sleep(2 * time.Second)
+
 		// flash new bootloader
 		exp.ExpectBatch([]expect.Batcher{
 			&expect.BSnd{S: "printenv\n"},
+			&expect.BExp{R: "board="},
 			&expect.BExp{R: "linino>"},
 			&expect.BSnd{S: "tftp 0x80060000 " + ctx.bootloaderFirmwareName + "\n"},
-			&expect.BExp{R: "Bytes transferred = 182492 (2c8dc hex)"},
+			&expect.BExp{R: "Bytes transferred = 182492"},
 			&expect.BExp{R: "linino>"},
 			&expect.BSnd{S: "erase 0x9f000000 +0x40000\n"},
 			&expect.BExp{R: "linino>"},
@@ -250,6 +253,8 @@ func flash(exp expect.Expecter, ctx context) (string, error) {
 			&expect.BExp{R: "linino>"},
 			&expect.BSnd{S: "reset\n"},
 		}, time.Duration(30)*time.Second)
+
+		time.Sleep(1 * time.Second)
 
 		// set new name
 		exp.ExpectBatch([]expect.Batcher{
