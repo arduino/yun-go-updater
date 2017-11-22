@@ -186,7 +186,7 @@ func main() {
 	}
 
 	// start the expecter
-	exp, _, err := serialSpawn(port, time.Duration(10)*time.Second, expect.Verbose(true), expect.VerboseWriter(os.Stdout))
+	exp, _, err := serialSpawn(port, time.Duration(10)*time.Second, expect.CheckDuration(100*time.Millisecond), expect.Verbose(true), expect.VerboseWriter(os.Stdout))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -231,55 +231,92 @@ func flash(exp expect.Expecter, ctx context) (string, error) {
 		&expect.BSnd{S: "\n"},
 		&expect.BExp{R: "root@"},
 		&expect.BSnd{S: "reboot\n"},
-	}, time.Duration(10)*time.Second)
+	}, time.Duration(5)*time.Second)
 
 	if err != nil {
 		fmt.Println("Reboot the board using YUN RST button")
 	} else {
 		fmt.Println("Rebooting the board")
-		time.Sleep(2 * time.Second)
+	}
+
+	// in bootloader mode:
+	// understand which version of the BL we are in
+	res, err = exp.ExpectBatch([]expect.Batcher{
+		&expect.BExp{R: "stop with '([a-z]+)'"},
+	}, time.Duration(20)*time.Second)
+
+	if err != nil {
+		return "", err
+	}
+
+	stopCommand := res[0].Match[len(res[0].Match)-1]
+
+	// call stop and detect firmware version (if it needs to be updated)
+	res, err = exp.ExpectBatch([]expect.Batcher{
+		&expect.BSnd{S: stopCommand + "\n"},
+		&expect.BSnd{S: "printenv\n"},
+		&expect.BExp{R: "([a-z]+)>"},
+	}, time.Duration(5)*time.Second)
+
+	if err != nil {
+		return "", err
+	}
+
+	fwShell := res[0].Match[len(res[0].Match)-1]
+
+	if fwShell != "arduino" {
+		*ctx.flashBootloader = true
+		fmt.Println("fwShell: " + fwShell)
 	}
 
 	if *ctx.flashBootloader {
 		// set server and board ip
 		res, err = exp.ExpectBatch([]expect.Batcher{
-			&expect.BExp{R: "autoboot in"},
-			&expect.BSnd{S: "ard\n"},
-			&expect.BExp{R: "arduino>"},
+			&expect.BSnd{S: stopCommand + "\n"},
+			&expect.BExp{R: fwShell + ">"},
 			&expect.BSnd{S: "setenv serverip " + ctx.serverAddr + "\n"},
-			&expect.BExp{R: "arduino>"},
+			&expect.BExp{R: fwShell + ">"},
 			&expect.BSnd{S: "printenv\n"},
 			&expect.BExp{R: "serverip=" + ctx.serverAddr},
-			&expect.BExp{R: "arduino>"},
+			&expect.BExp{R: fwShell + ">"},
 			&expect.BSnd{S: "setenv ipaddr " + ctx.ipAddr + "\n"},
 			&expect.BSnd{S: "printenv\n"},
 			&expect.BExp{R: "ipaddr=" + ctx.ipAddr},
-			&expect.BExp{R: "arduino>"},
-		}, time.Duration(20)*time.Second)
+			&expect.BExp{R: fwShell + ">"},
+		}, time.Duration(10)*time.Second)
+
+		if err != nil {
+			return res[len(res)-1].Output, err
+		}
 
 		time.Sleep(2 * time.Second)
 
 		// flash new bootloader
-		exp.ExpectBatch([]expect.Batcher{
+		res, err = exp.ExpectBatch([]expect.Batcher{
 			&expect.BSnd{S: "printenv\n"},
-			&expect.BExp{R: "board="},
-			&expect.BExp{R: "arduino>"},
+			&expect.BExp{R: fwShell + ">"},
 			&expect.BSnd{S: "tftp 0x80060000 " + ctx.bootloaderFirmware.name + "\n"},
 			&expect.BExp{R: "Bytes transferred = " + strconv.FormatInt(ctx.bootloaderFirmware.size, 10)},
-			&expect.BExp{R: "arduino>"},
+			&expect.BExp{R: fwShell + ">"},
 			&expect.BSnd{S: "erase 0x9f000000 +0x40000\n"},
-			&expect.BExp{R: "arduino>"},
+			&expect.BExp{R: fwShell + ">"},
 			&expect.BSnd{S: "cp.b $fileaddr 0x9f000000 $filesize\n"},
-			&expect.BExp{R: "arduino>"},
+			&expect.BExp{R: fwShell + ">"},
 			&expect.BSnd{S: "erase 0x9f040000 +0x10000\n"},
-			&expect.BExp{R: "arduino>"},
+			&expect.BExp{R: fwShell + ">"},
 			&expect.BSnd{S: "reset\n"},
 		}, time.Duration(30)*time.Second)
+
+		if err != nil {
+			return res[len(res)-1].Output, err
+		}
+
+		// New bootloader flashed, stop with 'ard' and shell is 'arduino>'
 
 		time.Sleep(1 * time.Second)
 
 		// set new name
-		exp.ExpectBatch([]expect.Batcher{
+		res, err = exp.ExpectBatch([]expect.Batcher{
 			&expect.BExp{R: "autoboot in"},
 			&expect.BSnd{S: "ard\n"},
 			&expect.BExp{R: "arduino>"},
@@ -291,6 +328,10 @@ func flash(exp expect.Expecter, ctx context) (string, error) {
 			&expect.BExp{R: "arduino>"},
 			&expect.BSnd{S: "reset\n"},
 		}, time.Duration(10)*time.Second)
+	}
+
+	if err != nil {
+		return res[len(res)-1].Output, err
 	}
 
 	// set server and board ip
@@ -357,7 +398,7 @@ func flash(exp expect.Expecter, ctx context) (string, error) {
 func serialSpawn(port string, timeout time.Duration, opts ...expect.Option) (expect.Expecter, <-chan error, error) {
 	// open the port with safe parameters
 	mode := &serial.Mode{
-		BaudRate: 9600,
+		BaudRate: 115200,
 		Parity:   serial.NoParity,
 		DataBits: 8,
 		StopBits: serial.OneStopBit,
