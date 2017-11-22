@@ -234,7 +234,7 @@ func flash(exp expect.Expecter, ctx context) (string, error) {
 	res, err := exp.ExpectBatch([]expect.Batcher{
 		&expect.BSnd{S: "\n"},
 		&expect.BExp{R: "root@"},
-		&expect.BSnd{S: "reboot\n"},
+		&expect.BSnd{S: "reboot -f\n"},
 	}, time.Duration(5)*time.Second)
 
 	if err != nil {
