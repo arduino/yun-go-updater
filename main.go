@@ -336,8 +336,7 @@ func flash(exp expect.Expecter, ctx context) (string, error) {
 
 	// set server and board ip
 	res, err = exp.ExpectBatch([]expect.Batcher{
-		&expect.BExp{R: "autoboot in"},
-		&expect.BSnd{S: "ard\n"},
+		&expect.BSnd{S: "\n"},
 		&expect.BExp{R: "arduino>"},
 		&expect.BSnd{S: "setenv serverip " + ctx.serverAddr + "\n"},
 		&expect.BExp{R: "arduino>"},
