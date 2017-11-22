@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -115,13 +116,24 @@ func getServerAndBoardIP(serverAddr, ipAddr *string) {
 	*ipAddr = ip.String()
 }
 
+type firmwareFile struct {
+	name string
+	size int64
+}
+
 type context struct {
-	flashBootloader        *bool
-	serverAddr             string
-	ipAddr                 string
-	bootloaderFirmwareName string
-	sysupgradeFirmwareName string
-	targetBoard            *string
+	flashBootloader    *bool
+	serverAddr         string
+	ipAddr             string
+	bootloaderFirmware firmwareFile
+	sysupgradeFirmware firmwareFile
+	targetBoard        *string
+}
+
+func getFileSize(path string) int64 {
+	file, _ := os.Open(path)
+	fi, _ := file.Stat()
+	return fi.Size()
 }
 
 func main() {
@@ -185,7 +197,17 @@ func main() {
 		}
 	}()
 
-	ctx := context{flashBootloader: flashBootloader, serverAddr: serverAddr, ipAddr: ipAddr, bootloaderFirmwareName: bootloaderFirmwareName, sysupgradeFirmwareName: sysupgradeFirmwareName, targetBoard: targetBoard}
+	execDir, _ := os.Executable()
+	execDir = filepath.Dir(execDir)
+	tftpDir := filepath.Join(execDir, "tftp")
+
+	bootloaderSize := getFileSize(filepath.Join(tftpDir, bootloaderFirmwareName))
+	sysupgradeSize := getFileSize(filepath.Join(tftpDir, sysupgradeFirmwareName))
+
+	bootloaderFirmware := firmwareFile{name: bootloaderFirmwareName, size: bootloaderSize}
+	sysupgradeFirmware := firmwareFile{name: sysupgradeFirmwareName, size: sysupgradeSize}
+
+	ctx := context{flashBootloader: flashBootloader, serverAddr: serverAddr, ipAddr: ipAddr, bootloaderFirmware: bootloaderFirmware, sysupgradeFirmware: sysupgradeFirmware, targetBoard: targetBoard}
 
 	lastline, err := flash(exp, ctx)
 
@@ -242,8 +264,8 @@ func flash(exp expect.Expecter, ctx context) (string, error) {
 			&expect.BSnd{S: "printenv\n"},
 			&expect.BExp{R: "board="},
 			&expect.BExp{R: "linino>"},
-			&expect.BSnd{S: "tftp 0x80060000 " + ctx.bootloaderFirmwareName + "\n"},
-			&expect.BExp{R: "Bytes transferred = 182492"},
+			&expect.BSnd{S: "tftp 0x80060000 " + ctx.bootloaderFirmware.name + "\n"},
+			&expect.BExp{R: "Bytes transferred = " + strconv.FormatInt(ctx.bootloaderFirmware.size, 10)},
 			&expect.BExp{R: "linino>"},
 			&expect.BSnd{S: "erase 0x9f000000 +0x40000\n"},
 			&expect.BExp{R: "linino>"},
@@ -310,11 +332,11 @@ func flash(exp expect.Expecter, ctx context) (string, error) {
 		&expect.BSnd{S: "printenv\n"},
 		&expect.BExp{R: "board="},
 		&expect.BExp{R: "linino>"},
-		&expect.BSnd{S: "tftp 0x80060000 " + ctx.sysupgradeFirmwareName + "\n"},
-		&expect.BExp{R: "Bytes transferred = 3538948"},
+		&expect.BSnd{S: "tftp 0x80060000 " + ctx.sysupgradeFirmware.name + "\n"},
+		&expect.BExp{R: "Bytes transferred = " + strconv.FormatInt(ctx.sysupgradeFirmware.size, 10)},
 		&expect.BExp{R: "linino>"},
-		&expect.BSnd{S: "erase 0x9f050000 +0x400004\n"},
-		&expect.BExp{R: "Erased 65 sectors"},
+		&expect.BSnd{S: "erase 0x9f050000 +0x" + strconv.FormatInt(ctx.sysupgradeFirmware.size, 16) + "\n"},
+		&expect.BExp{R: "Erased [0-9]+ sectors"},
 		&expect.BSnd{S: "printenv\n"},
 		&expect.BExp{R: "linino>"},
 		&expect.BSnd{S: "cp.b $fileaddr 0x9f050000 $filesize\n"},
