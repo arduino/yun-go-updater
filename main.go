@@ -138,7 +138,7 @@ func getFileSize(path string) int64 {
 
 func main() {
 
-	bootloaderFirmwareName := "u-boot-linino-lede.bin"
+	bootloaderFirmwareName := "u-boot-arduino-lede.bin"
 	sysupgradeFirmwareName := "lede-ar71xx-generic-arduino-yun-squashfs-sysupgrade.bin"
 
 	serverAddr := ""
@@ -245,16 +245,16 @@ func flash(exp expect.Expecter, ctx context) (string, error) {
 		res, err = exp.ExpectBatch([]expect.Batcher{
 			&expect.BExp{R: "autoboot in"},
 			&expect.BSnd{S: "ard\n"},
-			&expect.BExp{R: "linino>"},
+			&expect.BExp{R: "arduino>"},
 			&expect.BSnd{S: "setenv serverip " + ctx.serverAddr + "\n"},
-			&expect.BExp{R: "linino>"},
+			&expect.BExp{R: "arduino>"},
 			&expect.BSnd{S: "printenv\n"},
 			&expect.BExp{R: "serverip=" + ctx.serverAddr},
-			&expect.BExp{R: "linino>"},
+			&expect.BExp{R: "arduino>"},
 			&expect.BSnd{S: "setenv ipaddr " + ctx.ipAddr + "\n"},
 			&expect.BSnd{S: "printenv\n"},
 			&expect.BExp{R: "ipaddr=" + ctx.ipAddr},
-			&expect.BExp{R: "linino>"},
+			&expect.BExp{R: "arduino>"},
 		}, time.Duration(20)*time.Second)
 
 		time.Sleep(2 * time.Second)
@@ -263,16 +263,16 @@ func flash(exp expect.Expecter, ctx context) (string, error) {
 		exp.ExpectBatch([]expect.Batcher{
 			&expect.BSnd{S: "printenv\n"},
 			&expect.BExp{R: "board="},
-			&expect.BExp{R: "linino>"},
+			&expect.BExp{R: "arduino>"},
 			&expect.BSnd{S: "tftp 0x80060000 " + ctx.bootloaderFirmware.name + "\n"},
 			&expect.BExp{R: "Bytes transferred = " + strconv.FormatInt(ctx.bootloaderFirmware.size, 10)},
-			&expect.BExp{R: "linino>"},
+			&expect.BExp{R: "arduino>"},
 			&expect.BSnd{S: "erase 0x9f000000 +0x40000\n"},
-			&expect.BExp{R: "linino>"},
+			&expect.BExp{R: "arduino>"},
 			&expect.BSnd{S: "cp.b $fileaddr 0x9f000000 $filesize\n"},
-			&expect.BExp{R: "linino>"},
+			&expect.BExp{R: "arduino>"},
 			&expect.BSnd{S: "erase 0x9f040000 +0x10000\n"},
-			&expect.BExp{R: "linino>"},
+			&expect.BExp{R: "arduino>"},
 			&expect.BSnd{S: "reset\n"},
 		}, time.Duration(30)*time.Second)
 
@@ -282,13 +282,13 @@ func flash(exp expect.Expecter, ctx context) (string, error) {
 		exp.ExpectBatch([]expect.Batcher{
 			&expect.BExp{R: "autoboot in"},
 			&expect.BSnd{S: "ard\n"},
-			&expect.BExp{R: "linino>"},
+			&expect.BExp{R: "arduino>"},
 			&expect.BSnd{S: "printenv\n"},
-			&expect.BExp{R: "linino>"},
+			&expect.BExp{R: "arduino>"},
 			&expect.BSnd{S: "setenv board " + *ctx.targetBoard + "\n"},
-			&expect.BExp{R: "linino>"},
+			&expect.BExp{R: "arduino>"},
 			&expect.BSnd{S: "saveenv\n"},
-			&expect.BExp{R: "linino>"},
+			&expect.BExp{R: "arduino>"},
 			&expect.BSnd{S: "reset\n"},
 		}, time.Duration(10)*time.Second)
 	}
@@ -297,16 +297,16 @@ func flash(exp expect.Expecter, ctx context) (string, error) {
 	res, err = exp.ExpectBatch([]expect.Batcher{
 		&expect.BExp{R: "autoboot in"},
 		&expect.BSnd{S: "ard\n"},
-		&expect.BExp{R: "linino>"},
+		&expect.BExp{R: "arduino>"},
 		&expect.BSnd{S: "setenv serverip " + ctx.serverAddr + "\n"},
-		&expect.BExp{R: "linino>"},
+		&expect.BExp{R: "arduino>"},
 		&expect.BSnd{S: "printenv\n"},
 		&expect.BExp{R: "serverip=" + ctx.serverAddr},
-		&expect.BExp{R: "linino>"},
+		&expect.BExp{R: "arduino>"},
 		&expect.BSnd{S: "setenv ipaddr " + ctx.ipAddr + "\n"},
 		&expect.BSnd{S: "printenv\n"},
 		&expect.BExp{R: "ipaddr=" + ctx.ipAddr},
-		&expect.BExp{R: "linino>"},
+		&expect.BExp{R: "arduino>"},
 	}, time.Duration(20)*time.Second)
 
 	if err != nil {
@@ -331,18 +331,18 @@ func flash(exp expect.Expecter, ctx context) (string, error) {
 	res, err = exp.ExpectBatch([]expect.Batcher{
 		&expect.BSnd{S: "printenv\n"},
 		&expect.BExp{R: "board="},
-		&expect.BExp{R: "linino>"},
+		&expect.BExp{R: "arduino>"},
 		&expect.BSnd{S: "tftp 0x80060000 " + ctx.sysupgradeFirmware.name + "\n"},
 		&expect.BExp{R: "Bytes transferred = " + strconv.FormatInt(ctx.sysupgradeFirmware.size, 10)},
-		&expect.BExp{R: "linino>"},
+		&expect.BExp{R: "arduino>"},
 		&expect.BSnd{S: "erase 0x9f050000 +0x" + strconv.FormatInt(ctx.sysupgradeFirmware.size, 16) + "\n"},
 		&expect.BExp{R: "Erased [0-9]+ sectors"},
 		&expect.BSnd{S: "printenv\n"},
-		&expect.BExp{R: "linino>"},
+		&expect.BExp{R: "arduino>"},
 		&expect.BSnd{S: "cp.b $fileaddr 0x9f050000 $filesize\n"},
 		&expect.BExp{R: "done"},
 		&expect.BSnd{S: "printenv\n"},
-		&expect.BExp{R: "linino>"},
+		&expect.BExp{R: "arduino>"},
 		&expect.BSnd{S: "reset\n"},
 		&expect.BExp{R: "Starting kernel"},
 	}, time.Duration(60)*time.Second)
