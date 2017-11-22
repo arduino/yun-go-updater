@@ -186,7 +186,7 @@ func main() {
 	}
 
 	// start the expecter
-	exp, _, err := serialSpawn(port, time.Duration(10)*time.Second, expect.CheckDuration(100*time.Millisecond), expect.Verbose(true), expect.VerboseWriter(os.Stdout))
+	exp, _, err := serialSpawn(port, time.Duration(10)*time.Second, expect.CheckDuration(100*time.Millisecond), expect.Verbose(false), expect.VerboseWriter(os.Stdout))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -215,6 +215,7 @@ func main() {
 
 	for err != nil && retry_count < 3 /* && strings.Contains(lastline, "Loading: T ")*/ {
 		//retry with different IP addresses
+		fmt.Println(lastline)
 		fmt.Println(err.Error())
 		getServerAndBoardIP(&serverAddr, &ipAddr)
 		ctx.serverAddr = serverAddr
@@ -223,7 +224,10 @@ func main() {
 		lastline, err = flash(exp, ctx)
 	}
 
-	fmt.Println(lastline)
+	if err == nil {
+		fmt.Println("All done! Enjoy your updated " + *targetBoard)
+	}
+	//fmt.Println(lastline)
 }
 
 func flash(exp expect.Expecter, ctx context) (string, error) {
@@ -250,6 +254,7 @@ func flash(exp expect.Expecter, ctx context) (string, error) {
 	}
 
 	stopCommand := res[0].Match[len(res[0].Match)-1]
+	fmt.Println("Using stop command: " + stopCommand)
 
 	// call stop and detect firmware version (if it needs to be updated)
 	res, err = exp.ExpectBatch([]expect.Batcher{
@@ -263,13 +268,19 @@ func flash(exp expect.Expecter, ctx context) (string, error) {
 	}
 
 	fwShell := res[0].Match[len(res[0].Match)-1]
+	fmt.Println("Got shell: " + fwShell)
 
 	if fwShell != "arduino" {
 		*ctx.flashBootloader = true
 		fmt.Println("fwShell: " + fwShell)
 	}
 
+	time.Sleep(1 * time.Second)
+
 	if *ctx.flashBootloader {
+
+		fmt.Println("Flashing Bootloader")
+
 		// set server and board ip
 		res, err = exp.ExpectBatch([]expect.Batcher{
 			&expect.BSnd{S: stopCommand + "\n"},
@@ -326,7 +337,6 @@ func flash(exp expect.Expecter, ctx context) (string, error) {
 			&expect.BExp{R: "arduino>"},
 			&expect.BSnd{S: "saveenv\n"},
 			&expect.BExp{R: "arduino>"},
-			&expect.BSnd{S: "reset\n"},
 		}, time.Duration(10)*time.Second)
 	}
 
@@ -334,10 +344,10 @@ func flash(exp expect.Expecter, ctx context) (string, error) {
 		return res[len(res)-1].Output, err
 	}
 
+	fmt.Println("Setting up IP addresses")
+
 	// set server and board ip
 	res, err = exp.ExpectBatch([]expect.Batcher{
-		&expect.BSnd{S: "\n"},
-		&expect.BExp{R: "arduino>"},
 		&expect.BSnd{S: "setenv serverip " + ctx.serverAddr + "\n"},
 		&expect.BExp{R: "arduino>"},
 		&expect.BSnd{S: "printenv\n"},
@@ -352,6 +362,8 @@ func flash(exp expect.Expecter, ctx context) (string, error) {
 	if err != nil {
 		return res[len(res)-1].Output, err
 	}
+
+	fmt.Println("Flashing sysupgrade image")
 
 	// ping the serverIP; if ping is not working, try another network interface
 	/*
@@ -487,13 +499,13 @@ func program(binary string, args []string) error {
 
 	go func() {
 		for stdoutCopy.Scan() {
-			fmt.Println(stdoutCopy.Text())
+			//fmt.Println(stdoutCopy.Text())
 		}
 	}()
 
 	go func() {
 		for stderrCopy.Scan() {
-			fmt.Println(stderrCopy.Text())
+			//fmt.Println(stderrCopy.Text())
 		}
 	}()
 
@@ -567,7 +579,7 @@ func waitReset(beforeReset []string, originalPort string, timeout_len int) strin
 	for {
 		ports, err := serial.GetPortsList()
 		port = differ(ports, beforeReset)
-		fmt.Println(beforeReset, " -> ", ports)
+		//fmt.Println(beforeReset, " -> ", ports)
 
 		if port != "" {
 			break
@@ -585,7 +597,7 @@ func waitReset(beforeReset []string, originalPort string, timeout_len int) strin
 	for {
 		ports, _ := serial.GetPortsList()
 		port = differ(ports, afterReset)
-		fmt.Println(afterReset, " -> ", ports)
+		//fmt.Println(afterReset, " -> ", ports)
 		if port != "" {
 			fmt.Println("Found upload port: ", port)
 			time.Sleep(time.Millisecond * 500)
