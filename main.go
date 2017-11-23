@@ -144,6 +144,7 @@ func main() {
 	serverAddr := ""
 	ipAddr := ""
 
+	oldYun := flag.Bool("old", false, "Flash really old Yun")
 	flashBootloader := flag.Bool("bl", false, "Flash bootloader too (danger zone)")
 	targetBoard := flag.String("board", "Yun", "Update to target board")
 	flag.Parse()
@@ -186,7 +187,7 @@ func main() {
 	}
 
 	// start the expecter
-	exp, _, err := serialSpawn(port, time.Duration(10)*time.Second, expect.CheckDuration(100*time.Millisecond), expect.Verbose(false), expect.VerboseWriter(os.Stdout))
+	exp, _, err := serialSpawn(port, time.Duration(10)*time.Second, expect.CheckDuration(100*time.Millisecond), expect.Verbose(true), expect.VerboseWriter(os.Stdout))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -209,7 +210,7 @@ func main() {
 
 	ctx := context{flashBootloader: flashBootloader, serverAddr: serverAddr, ipAddr: ipAddr, bootloaderFirmware: bootloaderFirmware, sysupgradeFirmware: sysupgradeFirmware, targetBoard: targetBoard}
 
-	lastline, err := flash(exp, ctx)
+	lastline, err := flash(exp, ctx, *oldYun)
 
 	retry_count := 0
 
@@ -221,7 +222,7 @@ func main() {
 		ctx.serverAddr = serverAddr
 		ctx.ipAddr = ipAddr
 		retry_count++
-		lastline, err = flash(exp, ctx)
+		lastline, err = flash(exp, ctx, *oldYun)
 	}
 
 	if err == nil {
@@ -230,7 +231,7 @@ func main() {
 	//fmt.Println(lastline)
 }
 
-func flash(exp expect.Expecter, ctx context) (string, error) {
+func flash(exp expect.Expecter, ctx context, superOldYun bool) (string, error) {
 	res, err := exp.ExpectBatch([]expect.Batcher{
 		&expect.BSnd{S: "\n"},
 		&expect.BExp{R: "root@"},
@@ -243,24 +244,48 @@ func flash(exp expect.Expecter, ctx context) (string, error) {
 		fmt.Println("Rebooting the board")
 	}
 
-	// in bootloader mode:
-	// understand which version of the BL we are in
-	res, err = exp.ExpectBatch([]expect.Batcher{
-		&expect.BExp{R: "stop with '([a-z]+)'"},
-	}, time.Duration(20)*time.Second)
+	err = nil
 
+	if !superOldYun {
+		// in bootloader mode:
+		// understand which version of the BL we are in
+		res, err = exp.ExpectBatch([]expect.Batcher{
+			&expect.BExp{R: "stop with '([a-z]+)'"},
+		}, time.Duration(20)*time.Second)
+	}
+
+	// Older yun stuff: there is no sequence to stop the bootloader, a single keypress is needed
+	// Check res output to match "Hit any key to stop autoboot"
 	if err != nil {
+		for _, line := range res {
+			if strings.Contains(line.Output, "Hit any key to stop autoboot") {
+				superOldYun = true
+			}
+		}
+	}
+
+	if err != nil && !superOldYun {
 		return "", err
 	}
 
-	stopCommand := res[0].Match[len(res[0].Match)-1]
-	fmt.Println("Using stop command: " + stopCommand)
+	stopCommand := ""
+
+	if superOldYun == true {
+		// aske to restart yun and wait 5 seconds
+		fmt.Println("Reboot the board using YUN RST button (old Yun mode)")
+		res, err = exp.ExpectBatch([]expect.Batcher{
+			&expect.BExp{R: "Hit any key to stop autoboot"},
+		}, time.Duration(30)*time.Second)
+	} else {
+		stopCommand = res[0].Match[len(res[0].Match)-1]
+		fmt.Println("Using stop command: " + stopCommand)
+	}
 
 	// call stop and detect firmware version (if it needs to be updated)
 	res, err = exp.ExpectBatch([]expect.Batcher{
 		&expect.BSnd{S: stopCommand + "\n"},
 		&expect.BSnd{S: "printenv\n"},
-		&expect.BExp{R: "([a-z]+)>"},
+		&expect.BExp{R: "([0-9a-zA-Z]+)>"},
 	}, time.Duration(5)*time.Second)
 
 	if err != nil {
@@ -283,8 +308,6 @@ func flash(exp expect.Expecter, ctx context) (string, error) {
 
 		// set server and board ip
 		res, err = exp.ExpectBatch([]expect.Batcher{
-			&expect.BSnd{S: stopCommand + "\n"},
-			&expect.BExp{R: fwShell + ">"},
 			&expect.BSnd{S: "setenv serverip " + ctx.serverAddr + "\n"},
 			&expect.BExp{R: fwShell + ">"},
 			&expect.BSnd{S: "printenv\n"},
