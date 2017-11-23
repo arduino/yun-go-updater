@@ -187,7 +187,7 @@ func main() {
 	}
 
 	// start the expecter
-	exp, _, err := serialSpawn(port, time.Duration(10)*time.Second, expect.CheckDuration(100*time.Millisecond), expect.Verbose(true), expect.VerboseWriter(os.Stdout))
+	exp, _, err := serialSpawn(port, time.Duration(10)*time.Second, expect.CheckDuration(100*time.Millisecond), expect.Verbose(false), expect.VerboseWriter(os.Stdout))
 	if err != nil {
 		log.Fatal(err)
 	}
