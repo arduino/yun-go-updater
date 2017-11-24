@@ -139,7 +139,7 @@ func getFileSize(path string) int64 {
 func main() {
 
 	bootloaderFirmwareName := "u-boot-arduino-lede.bin"
-	sysupgradeFirmwareName := "lede-ar71xx-generic-arduino-yun-squashfs-sysupgrade.bin"
+	sysupgradeFirmwareName := "ledeyun-17.11-r5403+1-3e7b776-ar71xx-generic-arduino-yun-squashfs-sysupgrade.bin"
 
 	serverAddr := ""
 	ipAddr := ""
@@ -250,36 +250,26 @@ func flash(exp expect.Expecter, ctx context, superOldYun bool) (string, error) {
 		// in bootloader mode:
 		// understand which version of the BL we are in
 		res, err = exp.ExpectBatch([]expect.Batcher{
-			&expect.BExp{R: "stop with '([a-z]+)'"},
+			&expect.BExp{R: "(stop with '([a-z]+)'|Hit any key to stop autoboot|type '([a-z]+)' to enter u-boot console)"},
 		}, time.Duration(20)*time.Second)
 	}
 
-	// Older yun stuff: there is no sequence to stop the bootloader, a single keypress is needed
-	// Check res output to match "Hit any key to stop autoboot"
 	if err != nil {
-		for _, line := range res {
-			if strings.Contains(line.Output, "Hit any key to stop autoboot") {
-				superOldYun = true
-			}
-		}
-	}
-
-	if err != nil && !superOldYun {
 		return "", err
 	}
 
-	stopCommand := ""
+	stopCommand := res[0].Match[len(res[0].Match)-1]
 
-	if superOldYun == true {
-		// aske to restart yun and wait 5 seconds
-		fmt.Println("Reboot the board using YUN RST button (old Yun mode)")
-		res, err = exp.ExpectBatch([]expect.Batcher{
-			&expect.BExp{R: "Hit any key to stop autoboot"},
-		}, time.Duration(30)*time.Second)
-	} else {
-		stopCommand = res[0].Match[len(res[0].Match)-1]
-		fmt.Println("Using stop command: " + stopCommand)
+	if stopCommand == "" {
+		stopCommand = res[0].Match[len(res[0].Match)-2]
 	}
+
+	if res[0].Match[0] == "Hit any key to stop autoboot" {
+		fmt.Println("Old YUN detected")
+		stopCommand = ""
+	}
+
+	fmt.Println("Using stop command: " + stopCommand)
 
 	// call stop and detect firmware version (if it needs to be updated)
 	res, err = exp.ExpectBatch([]expect.Batcher{
@@ -661,7 +651,10 @@ func differ(slice1 []string, slice2 []string) string {
 }
 
 func canUse(port *enumerator.PortDetails) bool {
-	if port.VID == "2341" && port.PID == "8041" {
+	if port.VID == "2341" && (port.PID == "8041" || port.PID == "0041") {
+		return true
+	}
+	if port.VID == "2a03" && (port.PID == "8041" || port.PID == "0041") {
 		return true
 	}
 	return false
