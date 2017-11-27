@@ -19,6 +19,8 @@ cd distrib/linux32/avr/
 wget http://downloads.arduino.cc/tools/avrdude-6.3.0-arduino8-i686-pc-linux-gnu.tar.bz2
 tar xvf *.tar.bz2
 rm -rf *.tar.bz2
+mv avrdude/{bin,etc} .
+rm -rf avrdude
 cd -
 
 #Linux64
@@ -29,6 +31,8 @@ cd distrib/linux64/avr/
 wget http://downloads.arduino.cc/tools/avrdude-6.3.0-arduino8-x86_64-pc-linux-gnu.tar.bz2
 tar xvf *.tar.bz2
 rm -rf *.tar.bz2
+mv avrdude/{bin,etc} .
+rm -rf avrdude
 cd -
 
 #LinuxARM
@@ -39,6 +43,8 @@ cd distrib/linuxarm/avr/
 wget http://downloads.arduino.cc/tools/avrdude-6.3.0-arduino8-armhf-pc-linux-gnu.tar.bz2
 tar xvf *.tar.bz2
 rm -rf *.tar.bz2
+mv avrdude/{bin,etc} .
+rm -rf avrdude
 cd -
 
 #Windows
@@ -49,6 +55,8 @@ cd distrib/windows/avr/
 wget http://downloads.arduino.cc/tools/avrdude-6.3.0-arduino8-i686-w64-mingw32.zip
 unzip avrdude-6.3.0-arduino8-i686-w64-mingw32.zip
 rm -rf *.zip
+mv avrdude/{bin,etc} .
+rm -rf avrdude
 cd -
 
 #OSX
@@ -59,4 +67,6 @@ cd distrib/osx/avr/
 wget http://downloads.arduino.cc/tools/avrdude-6.3.0-arduino8-i386-apple-darwin11.tar.bz2
 tar xvf *.tar.bz2
 rm -rf *.tar.bz2
+mv avrdude/{bin,etc} .
+rm -rf avrdude
 cd -
