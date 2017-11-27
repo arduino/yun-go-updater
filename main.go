@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	expect "github.com/google/goexpect"
+	expect "github.com/facchinm/goexpect"
 	"github.com/pin/tftp"
 	"github.com/pkg/errors"
 	serial "go.bug.st/serial.v1"
