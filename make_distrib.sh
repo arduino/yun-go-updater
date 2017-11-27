@@ -1,5 +1,6 @@
 #!/bin/bash -xe
 
+rm -rf distrib/
 mkdir -p distrib/{linux32,linux64,linuxarm,windows,osx}/{tftp,avr}
 
 export GOPATH=$PWD
@@ -48,7 +49,7 @@ rm -rf avrdude
 cd -
 
 #Windows
-CGO_ENABLED=0 GOOS=windows GOARCH=386 GO386=387 go build -o distrib/windows/yun-go-updater
+CGO_ENABLED=0 GOOS=windows GOARCH=386 GO386=387 go build -o distrib/windows/yun-go-updater.exe
 cp tftp/{$sysupgrade_fw_name,$u_boot_fw} distrib/windows/tftp
 cp avr/*.hex distrib/windows/avr/
 cd distrib/windows/avr/
@@ -70,3 +71,18 @@ rm -rf *.tar.bz2
 mv avrdude/{bin,etc} .
 rm -rf avrdude
 cd -
+
+
+#Make packages!
+cd distrib
+tar czvf yun-go-updater-linux32.tar.gz linux32/
+tar czvf yun-go-updater-linux64.tar.gz linux64/
+tar czvf yun-go-updater-linuxarm.tar.gz linuxarm/
+tar czvf yun-go-updater-osx.tar.gz osx/
+zip -r yun-go-updater-windows.zip windows/
+cd -
+
+
+echo "========= OUTPUTS ============="
+shasum distrib/yun-go-updater*
+ls -la distrib/yun-go-updater*
