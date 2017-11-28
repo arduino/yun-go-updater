@@ -144,7 +144,6 @@ func main() {
 	serverAddr := ""
 	ipAddr := ""
 
-	oldYun := flag.Bool("old", false, "Flash really old Yun")
 	flashBootloader := flag.Bool("bl", false, "Flash bootloader too (danger zone)")
 	targetBoard := flag.String("board", "Yun", "Update to target board")
 	flag.Parse()
@@ -210,7 +209,7 @@ func main() {
 
 	ctx := context{flashBootloader: flashBootloader, serverAddr: serverAddr, ipAddr: ipAddr, bootloaderFirmware: bootloaderFirmware, sysupgradeFirmware: sysupgradeFirmware, targetBoard: targetBoard}
 
-	lastline, err := flash(exp, ctx, *oldYun)
+	lastline, err := flash(exp, ctx)
 
 	retry_count := 0
 
@@ -222,7 +221,7 @@ func main() {
 		ctx.serverAddr = serverAddr
 		ctx.ipAddr = ipAddr
 		retry_count++
-		lastline, err = flash(exp, ctx, *oldYun)
+		lastline, err = flash(exp, ctx)
 	}
 
 	if err == nil {
@@ -231,7 +230,7 @@ func main() {
 	//fmt.Println(lastline)
 }
 
-func flash(exp expect.Expecter, ctx context, superOldYun bool) (string, error) {
+func flash(exp expect.Expecter, ctx context) (string, error) {
 	res, err := exp.ExpectBatch([]expect.Batcher{
 		&expect.BSnd{S: "\n"},
 		&expect.BExp{R: "root@"},
@@ -246,13 +245,11 @@ func flash(exp expect.Expecter, ctx context, superOldYun bool) (string, error) {
 
 	err = nil
 
-	if !superOldYun {
-		// in bootloader mode:
-		// understand which version of the BL we are in
-		res, err = exp.ExpectBatch([]expect.Batcher{
-			&expect.BExp{R: "(stop with '([a-z]+)'|Hit any key to stop autoboot|type '([a-z]+)' to enter u-boot console)"},
-		}, time.Duration(20)*time.Second)
-	}
+	// in bootloader mode:
+	// understand which version of the BL we are in
+	res, err = exp.ExpectBatch([]expect.Batcher{
+		&expect.BExp{R: "(stop with '([a-z]+)'|Hit any key to stop autoboot|type '([a-z]+)' to enter u-boot console)"},
+	}, time.Duration(20)*time.Second)
 
 	if err != nil {
 		return "", err
@@ -319,7 +316,6 @@ func flash(exp expect.Expecter, ctx context, superOldYun bool) (string, error) {
 			&expect.BExp{R: fwShell + ">"},
 			&expect.BSnd{S: "tftp 0x80060000 " + ctx.bootloaderFirmware.name + "\n"},
 			&expect.BExp{R: "Bytes transferred = " + strconv.FormatInt(ctx.bootloaderFirmware.size, 10)},
-			&expect.BExp{R: fwShell + ">"},
 			&expect.BSnd{S: "erase 0x9f000000 +0x40000\n"},
 			&expect.BExp{R: fwShell + ">"},
 			&expect.BSnd{S: "cp.b $fileaddr 0x9f000000 $filesize\n"},
