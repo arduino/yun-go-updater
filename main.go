@@ -686,7 +686,7 @@ func differ(slice1 []string, slice2 []string) string {
 }
 
 func canUse(port *enumerator.PortDetails) bool {
-	if port.VID == "2341" && (port.PID == "8041" || port.PID == "0041") {
+	if port.VID == "2341" && (port.PID == "8041" || port.PID == "0041" || port.PID == "8051" || port.PID == "0051") {
 		return true
 	}
 	if port.VID == "2a03" && (port.PID == "8041" || port.PID == "0041") {
