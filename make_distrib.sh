@@ -61,7 +61,7 @@ rm -rf avrdude
 cd -
 
 #OSX
-CGO_ENABLED=0 GOOS=linux GOARCH=arm go build -o distrib/osx/yun-go-updater
+CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -o distrib/osx/yun-go-updater
 cp tftp/{$sysupgrade_fw_name,$u_boot_fw} distrib/osx/tftp
 cp avr/*.hex distrib/osx/avr/
 cd distrib/osx/avr/
