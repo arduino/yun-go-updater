@@ -227,7 +227,7 @@ func main() {
 		}
 	}
 
-	if *interact {
+	if *interact || err != nil {
 		exp.Close()
 		serport.Close()
 		serport, _ := serial.Open(port, &serial.Mode{BaudRate: 115200})
@@ -363,11 +363,11 @@ func flash(exp expect.Expecter, ctx context) (string, error) {
 			&expect.BSnd{S: "tftp 0x80060000 " + ctx.bootloaderFirmware.name + "\n"},
 			&expect.BExp{R: "Bytes transferred = " + strconv.FormatInt(ctx.bootloaderFirmware.size, 10)},
 			&expect.BSnd{S: "erase 0x9f000000 +0x40000\n"},
-			&expect.BExp{R: fwShell + ">"},
+			&expect.BExp{R: "Erased 4 sectors"},
 			&expect.BSnd{S: "cp.b $fileaddr 0x9f000000 $filesize\n"},
-			&expect.BExp{R: fwShell + ">"},
+			&expect.BExp{R: "done"},
 			&expect.BSnd{S: "erase 0x9f040000 +0x10000\n"},
-			&expect.BExp{R: fwShell + ">"},
+			&expect.BExp{R: "Erased 1 sectors"},
 			&expect.BSnd{S: "reset\n"},
 		}, time.Duration(30)*time.Second)
 
