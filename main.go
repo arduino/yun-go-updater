@@ -274,7 +274,7 @@ func flash(exp expect.Expecter, ctx context, superOldYun bool) (string, error) {
 	// call stop and detect firmware version (if it needs to be updated)
 	res, err = exp.ExpectBatch([]expect.Batcher{
 		&expect.BSnd{S: stopCommand + "\n"},
-		&expect.BSnd{S: "printenv\n"},
+		&expect.BSnd{S: "printenv ipaddr\n"},
 		&expect.BExp{R: "([0-9a-zA-Z]+)>"},
 	}, time.Duration(5)*time.Second)
 
@@ -300,13 +300,11 @@ func flash(exp expect.Expecter, ctx context, superOldYun bool) (string, error) {
 		res, err = exp.ExpectBatch([]expect.Batcher{
 			&expect.BSnd{S: "setenv serverip " + ctx.serverAddr + "\n"},
 			&expect.BExp{R: fwShell + ">"},
-			&expect.BSnd{S: "printenv\n"},
+			&expect.BSnd{S: "printenv serverip\n"},
 			&expect.BExp{R: "serverip=" + ctx.serverAddr},
-			&expect.BExp{R: fwShell + ">"},
 			&expect.BSnd{S: "setenv ipaddr " + ctx.ipAddr + "\n"},
-			&expect.BSnd{S: "printenv\n"},
+			&expect.BSnd{S: "printenv ipaddr\n"},
 			&expect.BExp{R: "ipaddr=" + ctx.ipAddr},
-			&expect.BExp{R: fwShell + ">"},
 		}, time.Duration(10)*time.Second)
 
 		if err != nil {
@@ -317,7 +315,7 @@ func flash(exp expect.Expecter, ctx context, superOldYun bool) (string, error) {
 
 		// flash new bootloader
 		res, err = exp.ExpectBatch([]expect.Batcher{
-			&expect.BSnd{S: "printenv\n"},
+			&expect.BSnd{S: "printenv ipaddr\n"},
 			&expect.BExp{R: fwShell + ">"},
 			&expect.BSnd{S: "tftp 0x80060000 " + ctx.bootloaderFirmware.name + "\n"},
 			&expect.BExp{R: "Bytes transferred = " + strconv.FormatInt(ctx.bootloaderFirmware.size, 10)},
@@ -344,7 +342,7 @@ func flash(exp expect.Expecter, ctx context, superOldYun bool) (string, error) {
 			&expect.BExp{R: "autoboot in"},
 			&expect.BSnd{S: "ard\n"},
 			&expect.BExp{R: "arduino>"},
-			&expect.BSnd{S: "printenv\n"},
+			&expect.BSnd{S: "printenv ipaddr\n"},
 			&expect.BExp{R: "arduino>"},
 			&expect.BSnd{S: "setenv board " + *ctx.targetBoard + "\n"},
 			&expect.BExp{R: "arduino>"},
@@ -363,13 +361,11 @@ func flash(exp expect.Expecter, ctx context, superOldYun bool) (string, error) {
 	res, err = exp.ExpectBatch([]expect.Batcher{
 		&expect.BSnd{S: "setenv serverip " + ctx.serverAddr + "\n"},
 		&expect.BExp{R: "arduino>"},
-		&expect.BSnd{S: "printenv\n"},
+		&expect.BSnd{S: "printenv serverip\n"},
 		&expect.BExp{R: "serverip=" + ctx.serverAddr},
-		&expect.BExp{R: "arduino>"},
 		&expect.BSnd{S: "setenv ipaddr " + ctx.ipAddr + "\n"},
-		&expect.BSnd{S: "printenv\n"},
+		&expect.BSnd{S: "printenv ipaddr\n"},
 		&expect.BExp{R: "ipaddr=" + ctx.ipAddr},
-		&expect.BExp{R: "arduino>"},
 	}, time.Duration(20)*time.Second)
 
 	if err != nil {
@@ -394,23 +390,21 @@ func flash(exp expect.Expecter, ctx context, superOldYun bool) (string, error) {
 
 	// flash sysupgrade
 	res, err = exp.ExpectBatch([]expect.Batcher{
-		&expect.BSnd{S: "printenv\n"},
-		&expect.BExp{R: "board="},
-		&expect.BExp{R: "arduino>"},
+		&expect.BSnd{S: "printenv board\n"},
+		&expect.BExp{R: "board=" + *ctx.targetBoard},
 		&expect.BSnd{S: "tftp 0x80060000 " + ctx.sysupgradeFirmware.name + "\n"},
 		&expect.BExp{R: "Bytes transferred = " + strconv.FormatInt(ctx.sysupgradeFirmware.size, 10)},
-		&expect.BExp{R: "arduino>"},
-		&expect.BSnd{S: "erase 0x9f050000 +0x" + strconv.FormatInt(ctx.sysupgradeFirmware.size, 16) + "\n"},
+		&expect.BSnd{S: `erase 0x9f050000 +0x` + strconv.FormatInt(ctx.sysupgradeFirmware.size, 16) + "\n"},
 		&expect.BExp{R: "Erased [0-9]+ sectors"},
-		&expect.BSnd{S: "printenv\n"},
+		&expect.BSnd{S: "printenv serverip\n"},
 		&expect.BExp{R: "arduino>"},
 		&expect.BSnd{S: "cp.b $fileaddr 0x9f050000 $filesize\n"},
 		&expect.BExp{R: "done"},
-		&expect.BSnd{S: "printenv\n"},
+		&expect.BSnd{S: "printenv serverip\n"},
 		&expect.BExp{R: "arduino>"},
 		&expect.BSnd{S: "reset\n"},
-		&expect.BExp{R: "Starting kernel"},
-	}, time.Duration(60)*time.Second)
+		&expect.BExp{R: "Transferring control to Linux"},
+	}, time.Duration(90)*time.Second)
 
 	if err != nil {
 		return res[len(res)-1].Output, err
@@ -423,9 +417,6 @@ func serialSpawn(port string, timeout time.Duration, opts ...expect.Option) (exp
 	// open the port with safe parameters
 	mode := &serial.Mode{
 		BaudRate: 115200,
-		Parity:   serial.NoParity,
-		DataBits: 8,
-		StopBits: serial.OneStopBit,
 	}
 	serPort, err := serial.Open(port, mode)
 	if err != nil {
@@ -466,7 +457,7 @@ func upload(port string) (string, error) {
 		return "", err
 	}
 	ports, err := serial.GetPortsList()
-	port = waitReset(ports, port, 1)
+	port = waitReset(ports, port, 5)
 	return port, nil
 }
 
