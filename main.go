@@ -20,6 +20,7 @@ import (
 	"github.com/pkg/errors"
 	serial "go.bug.st/serial.v1"
 	"go.bug.st/serial.v1/enumerator"
+	"golang.org/x/crypto/ssh/terminal"
 )
 
 // readHandler is called when client starts file download from server
@@ -145,6 +146,7 @@ func main() {
 	ipAddr := ""
 
 	flashBootloader := flag.Bool("bl", false, "Flash bootloader too (danger zone)")
+	interact := flag.Bool("i", false, "Open a serial console after flash has completed")
 	targetBoard := flag.String("board", "Yun", "Update to target board")
 	flag.Parse()
 	// serve tftp files
@@ -186,16 +188,10 @@ func main() {
 	}
 
 	// start the expecter
-	exp, _, err := serialSpawn(port, time.Duration(10)*time.Second, expect.CheckDuration(100*time.Millisecond), expect.Verbose(false), expect.VerboseWriter(os.Stdout))
+	exp, _, err, serport := serialSpawn(port, time.Duration(10)*time.Second, expect.CheckDuration(100*time.Millisecond), expect.Verbose(false), expect.VerboseWriter(os.Stdout))
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	defer func() {
-		if err := exp.Close(); err != nil {
-			fmt.Println("Problems when closing port")
-		}
-	}()
 
 	execDir, _ := os.Executable()
 	execDir = filepath.Dir(execDir)
@@ -226,8 +222,58 @@ func main() {
 
 	if err == nil {
 		fmt.Println("All done! Enjoy your updated " + *targetBoard)
+		if !*interact {
+			time.Sleep(10 * time.Second)
+		}
+	}
+
+	if *interact {
+		exp.Close()
+		serport.Close()
+		serport, _ := serial.Open(port, &serial.Mode{BaudRate: 115200})
+		serialMonitor(serport)
 	}
 	//fmt.Println(lastline)
+}
+
+func serialMonitor(serport serial.Port) {
+	fmt.Println("This is a serial terminal on your Yun; feel free to explore it")
+	fmt.Println("Exit by typing \"exit\"")
+	oldState, err := terminal.MakeRaw(0)
+	if err != nil {
+		return
+	}
+	defer terminal.Restore(0, oldState)
+	screen := struct {
+		io.Reader
+		io.Writer
+	}{os.Stdin, os.Stdout}
+	term := terminal.NewTerminal(screen, "")
+	go func() {
+		buf := make([]byte, 1000)
+		for {
+			n, err := serport.Read(buf)
+			if err == nil && n > 0 {
+				term.Write(buf[:n])
+			}
+		}
+	}()
+	for {
+		line, err := term.ReadLine()
+		if err == io.EOF {
+			return
+		}
+		if err != nil {
+			return
+		}
+		if line == "exit" {
+			break
+		}
+		_, err = serport.Write([]byte(line + "\n"))
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
 }
 
 func flash(exp expect.Expecter, ctx context) (string, error) {
@@ -409,19 +455,19 @@ func flash(exp expect.Expecter, ctx context) (string, error) {
 	return res[len(res)-1].Output, nil
 }
 
-func serialSpawn(port string, timeout time.Duration, opts ...expect.Option) (expect.Expecter, <-chan error, error) {
+func serialSpawn(port string, timeout time.Duration, opts ...expect.Option) (expect.Expecter, <-chan error, error, serial.Port) {
 	// open the port with safe parameters
 	mode := &serial.Mode{
 		BaudRate: 115200,
 	}
 	serPort, err := serial.Open(port, mode)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, err, nil
 	}
 
 	resCh := make(chan error)
 
-	return expect.SpawnGeneric(&expect.GenOptions{
+	exp, ch, err := expect.SpawnGeneric(&expect.GenOptions{
 		In:  serPort,
 		Out: serPort,
 		Wait: func() error {
@@ -429,10 +475,12 @@ func serialSpawn(port string, timeout time.Duration, opts ...expect.Option) (exp
 		},
 		Close: func() error {
 			close(resCh)
-			return serPort.Close()
+			return nil
 		},
 		Check: func() bool { return true },
 	}, timeout, opts...)
+
+	return exp, ch, err, serPort
 }
 
 func upload(port string) (string, error) {
