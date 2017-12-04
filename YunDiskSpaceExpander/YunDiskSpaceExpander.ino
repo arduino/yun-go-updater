@@ -224,7 +224,7 @@ void partitionAndFormatSDCard() {
   unmount();
 
   // format the first partition to FAT32
-  int exitCode = format.runShellCommand(F("mkfs.vfat /dev/sda1"));
+  int exitCode = format.runShellCommand(F("mkfs.fat /dev/sda1"));
   debugProcess(format);
   if (exitCode != SUCCESSFUL_EXIT_CODE) {
     Serial.println(F("\nerr. formatting to FAT32"));
