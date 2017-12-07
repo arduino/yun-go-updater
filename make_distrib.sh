@@ -6,7 +6,7 @@ mkdir -p distrib/{linux32,linux64,linuxarm,windows,osx}/{tftp,avr}
 export GOPATH=$PWD
 
 u_boot_fw=u-boot-arduino-lede.bin
-sysupgrade_fw_name=ledeyun-17.11-r5405-3cd7761-ar71xx-generic-arduino-yun-squashfs-sysupgrade.bin
+sysupgrade_fw_name=ledeyun-17.11-r5461-ce9089c-ar71xx-generic-arduino-yun-squashfs-sysupgrade.bin
 
 #check that sources match the real filename
 grep $sysupgrade_fw_name main.go
