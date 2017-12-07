@@ -140,7 +140,7 @@ func getFileSize(path string) int64 {
 func main() {
 
 	bootloaderFirmwareName := "u-boot-arduino-lede.bin"
-	sysupgradeFirmwareName := "ledeyun-17.11-r5405-3cd7761-ar71xx-generic-arduino-yun-squashfs-sysupgrade.bin"
+	sysupgradeFirmwareName := "ledeyun-17.11-r5461-ce9089c-ar71xx-generic-arduino-yun-squashfs-sysupgrade.bin"
 
 	serverAddr := ""
 	ipAddr := ""
