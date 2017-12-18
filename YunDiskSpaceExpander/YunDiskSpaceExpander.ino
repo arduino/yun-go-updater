@@ -177,11 +177,11 @@ void installSoftware() {
   // install the utility to format in EXT4
   exitCode = opkg.runShellCommand(F("opkg install e2fsprogs dosfstools fdisk rsync kmod-fs-ext4"));
   if (exitCode != SUCCESSFUL_EXIT_CODE) {
-    Serial.println(F("err. installing e2fsprogs mkdosfs fdisk"));
+    Serial.println(F("err. installing e2fsprogs dosfstools fdisk rsync kmod-fs-ext4"));
     debugProcess(opkg);
     halt();
   }
-  Serial.println(F("e2fsprogs mkdosfs fdisk rsync installed"));
+  Serial.println(F("e2fsprogs dosfstools fdisk rsync kmod-fs-ext4 installed"));
 }
 
 void partitionAndFormatSDCard() {
