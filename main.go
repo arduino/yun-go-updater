@@ -105,8 +105,8 @@ func getServerAndBoardIP(serverAddr, ipAddr *string) {
 	// remove last octect to get an available IP adress for the board
 	ip := net.ParseIP(*serverAddr)
 	ip = ip.To4()
-	// strat trying from server IP + 1
-	ip[3]++
+	// start trying from server IP + 1
+	ip[3] = 24
 	for ip[3] < 255 {
 		_, err := net.DialTimeout("tcp", ip.String(), 2*time.Second)
 		if err != nil {
@@ -115,6 +115,7 @@ func getServerAndBoardIP(serverAddr, ipAddr *string) {
 		ip[3]++
 	}
 	*ipAddr = ip.String()
+	fmt.Println("Using " + *serverAddr + " as server address and " + *ipAddr + " as board address")
 }
 
 type firmwareFile struct {
@@ -152,7 +153,6 @@ func main() {
 	// serve tftp files
 	serveTFTP()
 	getServerAndBoardIP(&serverAddr, &ipAddr)
-	fmt.Println("Using " + serverAddr + " as server address and " + ipAddr + " as board address")
 
 	// get serial ports attached
 	var serialPort enumerator.PortDetails
@@ -339,16 +339,27 @@ func flash(exp expect.Expecter, ctx context) (string, error) {
 
 		fmt.Println("Flashing Bootloader")
 
-		// set server and board ip
-		res, err = exp.ExpectBatch([]expect.Batcher{
-			&expect.BSnd{S: "setenv serverip " + ctx.serverAddr + "\n"},
-			&expect.BExp{R: fwShell + ">"},
-			&expect.BSnd{S: "printenv serverip\n"},
-			&expect.BExp{R: "serverip=" + ctx.serverAddr},
-			&expect.BSnd{S: "setenv ipaddr " + ctx.ipAddr + "\n"},
-			&expect.BSnd{S: "printenv ipaddr\n"},
-			&expect.BExp{R: "ipaddr=" + ctx.ipAddr},
-		}, time.Duration(10)*time.Second)
+		err = errors.New("ping")
+
+		retry := 0
+		for err != nil && retry < 4 {
+			// set server and board ip
+			res, err = exp.ExpectBatch([]expect.Batcher{
+				&expect.BSnd{S: "setenv serverip " + ctx.serverAddr + "\n"},
+				&expect.BExp{R: fwShell + ">"},
+				&expect.BSnd{S: "printenv serverip\n"},
+				&expect.BExp{R: "serverip=" + ctx.serverAddr},
+				&expect.BSnd{S: "setenv ipaddr " + ctx.ipAddr + "\n"},
+				&expect.BSnd{S: "printenv ipaddr\n"},
+				&expect.BExp{R: "ipaddr=" + ctx.ipAddr},
+				&expect.BSnd{S: "ping " + ctx.serverAddr + "\n"},
+				&expect.BExp{R: "host " + ctx.serverAddr + " is alive"},
+			}, time.Duration(10)*time.Second)
+			retry += 1
+			if err != nil {
+				getServerAndBoardIP(&ctx.serverAddr, &ctx.ipAddr)
+			}
+		}
 
 		if err != nil {
 			return res[len(res)-1].Output, err
@@ -399,16 +410,27 @@ func flash(exp expect.Expecter, ctx context) (string, error) {
 
 	fmt.Println("Setting up IP addresses")
 
-	// set server and board ip
-	res, err = exp.ExpectBatch([]expect.Batcher{
-		&expect.BSnd{S: "setenv serverip " + ctx.serverAddr + "\n"},
-		&expect.BExp{R: "arduino>"},
-		&expect.BSnd{S: "printenv serverip\n"},
-		&expect.BExp{R: "serverip=" + ctx.serverAddr},
-		&expect.BSnd{S: "setenv ipaddr " + ctx.ipAddr + "\n"},
-		&expect.BSnd{S: "printenv ipaddr\n"},
-		&expect.BExp{R: "ipaddr=" + ctx.ipAddr},
-	}, time.Duration(20)*time.Second)
+	err = errors.New("ping")
+
+	retry := 0
+	for err != nil && retry < 4 {
+		// set server and board ip
+		res, err = exp.ExpectBatch([]expect.Batcher{
+			&expect.BSnd{S: "setenv serverip " + ctx.serverAddr + "\n"},
+			&expect.BExp{R: fwShell + ">"},
+			&expect.BSnd{S: "printenv serverip\n"},
+			&expect.BExp{R: "serverip=" + ctx.serverAddr},
+			&expect.BSnd{S: "setenv ipaddr " + ctx.ipAddr + "\n"},
+			&expect.BSnd{S: "printenv ipaddr\n"},
+			&expect.BExp{R: "ipaddr=" + ctx.ipAddr},
+			&expect.BSnd{S: "ping " + ctx.serverAddr + "\n"},
+			&expect.BExp{R: "host " + ctx.serverAddr + " is alive"},
+		}, time.Duration(10)*time.Second)
+		retry += 1
+		if err != nil {
+			getServerAndBoardIP(&ctx.serverAddr, &ctx.ipAddr)
+		}
+	}
 
 	if err != nil {
 		return res[len(res)-1].Output, err
