@@ -52,6 +52,8 @@ void setup() {
 
   copySystemFilesFromYunToSD();
 
+  enableSwapPartition();
+
   enableExtRoot();
 
   Serial.print(F("\nWe are done! Yeah! Rebooting to apply the changes."));
@@ -273,6 +275,21 @@ void unmount() {
   debugProcess(format);
 }
 
+void enableSwapPartition() {
+  Serial.print(F("\nEnabling micro SD as additional swap... "));
+
+  Process fstab;
+
+  fstab.runShellCommand(F("uci add fstab swap"));
+  fstab.runShellCommand(F("uci set fstab.@swap[0].target=/swap"));
+  fstab.runShellCommand(F("uci set fstab.@swap[0].device=/overlay/swapfile"));
+  fstab.runShellCommand(F("uci set fstab.@swap[0].enabled=1"));
+  fstab.runShellCommand(F("uci set fstab.@swap[0].enabled_fsck=0"));
+  fstab.runShellCommand(F("uci commit"));
+
+  Serial.println(F("enabled"));
+}
+
 void enableExtRoot() {
   Serial.print(F("\nEnabling micro SD as additional disk space... "));
 
@@ -283,7 +300,7 @@ void enableExtRoot() {
   fstab.runShellCommand(F("uci set fstab.@mount[0].device=/dev/sda2"));
   fstab.runShellCommand(F("uci set fstab.@mount[0].fstype=ext4"));
   fstab.runShellCommand(F("uci set fstab.@mount[0].enabled=1"));
-  fstab.runShellCommand(F("uci set fstab.@mount[0].enabled_fsck=0"));
+  fstab.runShellCommand(F("uci set fstab.@mount[0].enabled_fsck=1"));
   fstab.runShellCommand(F("uci set fstab.@mount[0].options=rw,sync,noatime,nodiratime"));
   fstab.runShellCommand(F("uci commit"));
 
