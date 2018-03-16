@@ -115,7 +115,6 @@ func getServerAndBoardIP(serverAddr, ipAddr *string) {
 		ip[3]++
 	}
 	*ipAddr = ip.String()
-	fmt.Println("Using " + *serverAddr + " as server address and " + *ipAddr + " as board address")
 }
 
 type firmwareFile struct {
@@ -149,10 +148,34 @@ func main() {
 	flashBootloader := flag.Bool("bl", false, "Flash bootloader too (danger zone)")
 	interact := flag.Bool("i", false, "Open a serial console after flash has completed")
 	targetBoard := flag.String("board", "Yun", "Update to target board")
+
+	defaultServerAddr := flag.String("serverip", "", "<optional, only use if autodiscovery fails> Specify server IP address (this machine)")
+	defaultIpAddr := flag.String("boardip", "", "<optional, only use if autodiscovery fails> Specify YUN IP address")
+
 	flag.Parse()
 	// serve tftp files
 	serveTFTP()
-	getServerAndBoardIP(&serverAddr, &ipAddr)
+
+	serverAddr = *defaultServerAddr
+	ipAddr = *defaultIpAddr
+
+	if serverAddr != "" && ipAddr != "" {
+		fmt.Println("Using user provided " + serverAddr + " as server address and " + ipAddr + " as board address")
+	} else {
+		getServerAndBoardIP(&serverAddr, &ipAddr)
+		// Ask the user to confirm or decline the IP address found automatically
+		fmt.Println("================")
+		fmt.Println("Using " + serverAddr + " as server address and " + ipAddr + " as board address, confirm? (Y, n)")
+		fmt.Println("================")
+		response := ""
+		fmt.Scanln(&response)
+		if strings.Contains(response, "n") {
+			fmt.Print("Enter server IP address: ")
+			fmt.Scanln(&serverAddr)
+			fmt.Print("Enter board IP address: ")
+			fmt.Scanln(&ipAddr)
+		}
+	}
 
 	// get serial ports attached
 	var serialPort enumerator.PortDetails
