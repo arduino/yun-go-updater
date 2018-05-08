@@ -8,6 +8,12 @@ export GOPATH=$PWD
 u_boot_fw=u-boot-arduino-lede.bin
 sysupgrade_fw_name=ledeyun-17.11-r6773+1-8dd3a6e-ar71xx-generic-arduino-yun-squashfs-sysupgrade.bin
 
+#run a dry `go get` dry run to retrieve dependencies
+export GOPATH=$PWD
+set +e
+go get
+set -e
+
 #check that sources match the real filename
 grep $sysupgrade_fw_name main.go
 grep $u_boot_fw main.go
@@ -60,7 +66,7 @@ mv avrdude/{bin,etc} .
 rm -rf avrdude
 cd -
 
-#OSX
+#OSX (may fail if cross compilar is not in $PATH)
 CC=o64-clang GOOS=darwin GOARCH=amd64 go build -o distrib/osx/yun-go-updater
 cp tftp/{$sysupgrade_fw_name,$u_boot_fw} distrib/osx/tftp
 cp avr/*.hex distrib/osx/avr/
