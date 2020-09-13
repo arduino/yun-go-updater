@@ -18,7 +18,7 @@
 
   This code is in the public domain.
 
-  http://arduino.cc/en/Tutorial/ExtendingYunDiskSpace
+  https://www.arduino.cc/en/Tutorial/ExpandingYunDiskSpace
 
 */
 
