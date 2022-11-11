@@ -3,23 +3,15 @@
 rm -rf distrib/
 mkdir -p distrib/{linux32,linux64,linuxarm,windows,osx}/{tftp,avr}
 
-export GOPATH=$PWD
-
 u_boot_fw=u-boot-arduino-lede.bin
 sysupgrade_fw_name=ledeyun-17.11-r6773+1-8dd3a6e-ar71xx-generic-arduino-yun-squashfs-sysupgrade.bin
-
-#run a dry `go get` dry run to retrieve dependencies
-export GOPATH=$PWD
-set +e
-go get
-set -e
 
 #check that sources match the real filename
 grep $sysupgrade_fw_name main.go
 grep $u_boot_fw main.go
 
 #Linux32
-CGO_ENABLED=0 GOOS=linux GOARCH=386 GO386=387 go build -o distrib/linux32/yun-go-updater
+CGO_ENABLED=0 GOOS=linux GOARCH=386 GO386=softfloat go build -o distrib/linux32/yun-go-updater
 cp tftp/{$sysupgrade_fw_name,$u_boot_fw} distrib/linux32/tftp
 cp avr/*.hex distrib/linux32/avr/
 cd distrib/linux32/avr/
@@ -55,7 +47,7 @@ rm -rf avrdude
 cd -
 
 #Windows
-CGO_ENABLED=0 GOOS=windows GOARCH=386 GO386=387 go build -o distrib/windows/yun-go-updater.exe
+CGO_ENABLED=0 GOOS=windows GOARCH=386 GO386=softfloat go build -o distrib/windows/yun-go-updater.exe
 cp tftp/{$sysupgrade_fw_name,$u_boot_fw} distrib/windows/tftp
 cp avr/*.hex distrib/windows/avr/
 cd distrib/windows/avr/
